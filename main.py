@@ -1,6 +1,38 @@
 import sys
 import os
 import random
+import subprocess
+import mimetypes
+
+from PyQt5.QtCore import (
+    Qt,
+    QThread,
+    pyqtSignal,
+    QPoint
+)
+from PyQt5.QtGui import (
+    QFont,
+    QFontMetrics
+)
+from PyQt5.QtWidgets import (
+    QApplication,
+    QMainWindow,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QListWidget,
+    QAbstractItemView,
+    QFileDialog,
+    QSpinBox,
+    QLineEdit,
+    QMessageBox,
+    QMenu,
+    QProgressBar,
+    QStyleFactory,
+    QComboBox
+)
 
 
 FFMPEG_PATH = os.path.join('ffmpeg', 'bin', 'ffmpeg.exe')
@@ -179,10 +211,190 @@ def build_ffmpeg_cmd(in_path, out_path, filters, scale_p, speed_p, overlay, over
     return cmd
 
 
+def process_ffmpeg(in_path, out_path, filters, scale_p, speed_p, overlay, overlay_pos):
+    cmd = build_ffmpeg_cmd(in_path, out_path, filters, scale_p, speed_p, overlay, overlay_pos)
+
+    if os.name == 'nt':
+
+        CREATE_NO_WINDOW = 0x08000000
+        subprocess.run(cmd, check=True, creationflags=CREATE_NO_WINDOW)
+    else:
+        subprocess.run(cmd, check=True)
 
 
+class Worker(QThread):
+    progress = pyqtSignal(int, int)
+    finished = pyqtSignal()
+    error = pyqtSignal(str)
+    file_processing = pyqtSignal(str)
+
+    def __init__(self, files, filters, scale, speed, overlay, out_dir, overlay_pos):
+        super().__init__()
+        self.files = files
+        self.filters = filters
+        self.scale = scale
+        self.speed = speed
+        self.overlay = overlay
+        self.out_dir = out_dir
+        self.overlay_pos = overlay_pos
+
+    def run(self):
+        total = len(self.files)
+        for i, path_in in enumerate(self.files):
+            try:
+                base = os.path.basename(path_in)
+                self.file_processing.emit(base)
+                name, _ = os.path.splitext(base)
+                out_path = os.path.join(self.out_dir, f"{name}_processed.mp4")
+
+                process_ffmpeg(
+                    path_in,
+                    out_path,
+                    self.filters,
+                    self.scale,
+                    self.speed,
+                    self.overlay,
+                    self.overlay_pos
+                )
+            except Exception as e:
+                self.error.emit(str(e))
+            self.progress.emit(i + 1, total)
+        self.finished.emit()
 
 
+class VideoUnicApp(QMainWindow):
+
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Video Uniqueizer")
+        self.setAcceptDrops(True)
+        self.resize(1000, 600)
+
+        self.main_w = QWidget()
+        self.setCentralWidget(self.main_w)
+        self.ly = QHBoxLayout()
+        self.main_w.setLayout(self.ly)
+
+        self.left_panel = QVBoxLayout()
+        self.btn_add = QPushButton("Add video")
+        self.btn_add.setMinimumHeight(40)
+        self.btn_add.clicked.connect(self.on_add_files)
+        self.left_panel.addWidget(self.btn_add)
+
+        self.video_list = QListWidget()
+        self.video_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.video_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.video_list.customContextMenuRequested.connect(self.on_list_menu)
+        self.left_panel.addWidget(self.video_list)
+
+        self.ly.addLayout(self.left_panel, 2)
+
+        self.right_panel = QVBoxLayout()
+
+        self.lbl_f = QLabel("Select filters:")
+        self.filter_list = QListWidget()
+        self.filter_list.setSelectionMode(QAbstractItemView.ExtendedSelection)
+
+        for fn in FILTERS:
+            self.filter_list.addItem(fn)
+        self.filter_list.setFixedHeight(200)
+
+        self.right_panel.addWidget(self.lbl_f)
+        self.right_panel.addWidget(self.filter_list)
+
+        row_scale = QHBoxLayout()
+        row_scale.addWidget(QLabel("Scale (%)"))
+        self.scale_spin = QSpinBox()
+        self.scale_spin.setRange(10, 300)
+        self.scale_spin.setValue(100)
+        row_scale.addWidget(self.scale_spin)
+        self.right_panel.addLayout(row_scale)
+
+        row_speed = QHBoxLayout()
+        row_speed.addWidget(QLabel("Speed (%)"))
+        self.speed_spin = QSpinBox()
+        self.speed_spin.setRange(50, 200)
+        self.speed_spin.setValue(100)
+        row_speed.addWidget(self.speed_spin)
+        self.right_panel.addLayout(row_speed)
+
+        row_overlay = QHBoxLayout()
+        row_overlay.addWidget(QLabel("File Overlay:"))
+        self.overlay_path = QLineEdit()
+        btn_ol = QPushButton('Review...')
+        btn_ol.clicked.connect(self.on_overlay)
+        row_overlay.addWidget(self.overlay_path)
+        row_overlay.addWidget(btn_ol)
+        self.right_panel.addLayout(row_overlay)
+
+        row_pos = QHBoxLayout()
+        row_pos.addWidget(QLabel('Location:'))
+        self.overlay_pos_combo = QComboBox()
+        for pos in OVERLAY_POSITIONS:
+            self.overlay_pos_combo.addItem(pos)
+        row_pos.addWidget(self.overlay_pos_combo)
+        self.right_panel.addLayout(row_pos)
+
+        self.process_button = QPushButton('Process')
+        self.process_button.clicked.connect(self.start_processing)
+        self.right_panel.addWidget(self.process_button)
+
+        self.progress_label = QLabel('')
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setValue(0)
+        self.right_panel.addWidget(self.progress_label)
+        self.right_panel.addWidget(self.progress_bar)
+
+        self.status_label = QLabel('')
+        self.status_label.setWordWrap(False)
+        self.right_panel.addWidget(self.status_label)
+        self.right_panel.addStretch()
+
+        self.ly.addLayout(self.right_panel, 1)
+
+        self.setStyle(QStyleFactory.create('Fusion'))
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #2f2f2f;
+                color: #e6e6e6;
+                font-size: 13px;
+            }
+            QLineEdit {
+                background-color: #3f3f3f;
+                border: 1px solid #666;
+                border-radius: 4px;
+                padding: 4px;
+            }
+            QPushButton {
+                background-color: #4d4d4d;
+                border: 1px solid #777;
+                border-radius: 4px;
+                padding: 6px 12px;
+            }
+            QPushButton:hover {
+                background-color: #5a5a5a;
+            }
+            QListWidget {
+                background-color: #3f3f3f;
+                border: 2px dashed #777;
+            }
+            QSpinBox {
+                background-color: #3f3f3f;
+                border: 1px solid #777;
+                border-radius: 4px;
+                padding: 4px;
+                color: #fff;
+            }
+            QProgressBar {
+                border: 1px solid #555;
+                border-radius: 4px;
+                text-align: center;
+                background-color: #404040;
+            }
+            QProgressBar::chunk {
+                background-color: #79a6d2;
+            }
+        """)
 
 
 
