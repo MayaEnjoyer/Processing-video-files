@@ -396,6 +396,91 @@ class VideoUnicApp(QMainWindow):
             }
         """)
 
+        def on_add_files(self):
+
+            files, _ = QFileDialog.getOpenFileNames(
+                self, "Select video", '',
+                "Video files (*.mp4 *.mov *.avi *.mkv *.flv *.wmv *.m4v);;All files (*.*)"
+            )
+            for f in files:
+                if is_video_file(f):
+                    self.video_list.addItem(f)
+
+        def on_list_menu(self, pos: QPoint):
+
+            menu = QMenu()
+            act_delete = menu.addAction("Delete selected")
+            chosen = menu.exec_(self.video_list.viewport().mapToGlobal(pos))
+            if chosen == act_delete:
+                for it in self.video_list.selectedItems():
+                    r = self.video_list.row(it)
+                    self.video_list.takeItem(r)
+
+        def on_overlay(self):
+
+            fp, _ = QFileDialog.getOpenFileName(
+                self, "Select an image or video to overlay", '',
+                "Images/Videos (*.png *.jpg *.jpeg *.bmp *.mp4 *.mov *.avi *.mkv *.flv *.wmv *.m4v);;All files (*.*)"
+            )
+            if fp:
+                self.overlay_path.setText(fp)
+
+        def dragEnterEvent(self, e):
+
+            if e.mimeData().hasUrls():
+                e.acceptProposedAction()
+
+        def dropEvent(self, e):
+
+            for url in e.mimeData().urls():
+                fp = url.toLocalFile()
+                if os.path.isdir(fp):
+
+                    vids = find_videos_in_folder(fp)
+                    for v in vids:
+                        self.video_list.addItem(v)
+                else:
+
+                    if is_video_file(fp):
+                        self.video_list.addItem(fp)
+
+        def start_processing(self):
+
+            count = self.video_list.count()
+            if count == 0:
+                QMessageBox.warning(self, "No files", "Add files for processing.")
+                return
+
+            out_dir = QFileDialog.getExistingDirectory(self, "Select a folder to save to")
+            if not out_dir:
+                return
+
+            sel_items = self.filter_list.selectedItems()
+            selected_filters = [i.text() for i in sel_items]
+
+            scale_val = self.scale_spin.value()
+            speed_val = self.speed_spin.value()
+
+            overlay_file = self.overlay_path.text().strip()
+            overlay_file = overlay_file if overlay_file else None
+            overlay_pos = self.overlay_pos_combo.currentText()
+
+            files = []
+            for i in range(count):
+                files.append(self.video_list.item(i).text())
+
+            self.thread = Worker(files, selected_filters, scale_val, speed_val, overlay_file, out_dir, overlay_pos)
+            self.thread.progress.connect(self.on_prog)
+            self.thread.finished.connect(self.on_done)
+            self.thread.error.connect(self.on_err)
+            self.thread.file_processing.connect(self.on_file_processing)
+
+            self.progress_bar.setValue(0)
+            self.progress_label.setText(f"0 / {count}")
+            self.status_label.setText('')
+
+            self.thread.start()
+
 
 
 
