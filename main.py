@@ -44,7 +44,7 @@ FILTERS = {
     "High contrast": "eq=contrast=2.0",
     "Low contrast": "eq=contrast=0.5",
     'Sepia': "colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131",
-    "Инверсия": "negate",
+    'Inversion': "negate",
     "Blur (light)": "gblur=sigma=2",
     "Blur (strong)": "gblur=sigma=10",
     "Flip horizontally": "hflip",
@@ -495,3 +495,4 @@ class VideoUnicApp(QMainWindow):
 
 if __name__ == '__main__':
     main()
+
