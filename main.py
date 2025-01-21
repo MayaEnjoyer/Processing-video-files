@@ -396,7 +396,7 @@ class VideoUnicApp(QMainWindow):
             }
         """)
 
-        def on_add_files(self):
+    def on_add_files(self):
 
             files, _ = QFileDialog.getOpenFileNames(
                 self, "Select video", '',
@@ -406,7 +406,7 @@ class VideoUnicApp(QMainWindow):
                 if is_video_file(f):
                     self.video_list.addItem(f)
 
-        def on_list_menu(self, pos: QPoint):
+    def on_list_menu(self, pos: QPoint):
 
             menu = QMenu()
             act_delete = menu.addAction("Delete selected")
@@ -416,7 +416,7 @@ class VideoUnicApp(QMainWindow):
                     r = self.video_list.row(it)
                     self.video_list.takeItem(r)
 
-        def on_overlay(self):
+    def on_overlay(self):
 
             fp, _ = QFileDialog.getOpenFileName(
                 self, "Select an image or video to overlay", '',
@@ -425,12 +425,12 @@ class VideoUnicApp(QMainWindow):
             if fp:
                 self.overlay_path.setText(fp)
 
-        def dragEnterEvent(self, e):
+    def dragEnterEvent(self, e):
 
             if e.mimeData().hasUrls():
                 e.acceptProposedAction()
 
-        def dropEvent(self, e):
+    def dropEvent(self, e):
 
             for url in e.mimeData().urls():
                 fp = url.toLocalFile()
@@ -444,7 +444,7 @@ class VideoUnicApp(QMainWindow):
                     if is_video_file(fp):
                         self.video_list.addItem(fp)
 
-        def start_processing(self):
+    def start_processing(self):
 
             count = self.video_list.count()
             if count == 0:
@@ -481,18 +481,32 @@ class VideoUnicApp(QMainWindow):
 
             self.thread.start()
 
+    def on_prog(self, done, total):
+        percent = int(done * 100 / total)
+        self.progress_bar.setValue(percent)
+        self.progress_label.setText(f"{done} / {total}")
+
+    def on_file_processing(self, fname):
+        fm = QFontMetrics(self.status_label.font())
+        elided = fm.elidedText(fname, Qt.ElideMiddle, 300)
+        self.status_label.setText(f"I'm processing: {elided}")
+
+    def on_done(self):
+        QMessageBox.information(self, 'Ready', "Video processing complete.")
+        self.progress_label.setText("")
+        self.progress_bar.setValue(0)
+        self.status_label.setText("")
+
+    def on_err(self, msg):
+        QMessageBox.critical(self, "Processing error", msg)
 
 
-
-
-
-
-
-
-
-
+def main():
+    app = QApplication(sys.argv)
+    w = VideoUnicApp()
+    w.show()
+    sys.exit(app.exec_())
 
 
 if __name__ == '__main__':
     main()
-
