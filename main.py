@@ -491,7 +491,21 @@ class VideoUnicApp(QMainWindow):
         elided = fm.elidedText(fname, Qt.ElideMiddle, 300)
         self.status_label.setText(f"I'm processing: {elided}")
 
+    def on_done(self):
+        QMessageBox.information(self, 'Ready', "Video processing complete.")
+        self.progress_label.setText("")
+        self.progress_bar.setValue(0)
+        self.status_label.setText("")
 
+    def on_err(self, msg):
+        QMessageBox.critical(self, "Processing error", msg)
+
+
+def main():
+    app = QApplication(sys.argv)
+    w = VideoUnicApp()
+    w.show()
+    sys.exit(app.exec_())
 
 
 if __name__ == '__main__':
