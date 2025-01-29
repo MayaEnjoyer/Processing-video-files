@@ -468,7 +468,6 @@ class VideoUnicApp(QMainWindow):
             files = []
             for i in range(count):
                 files.append(self.video_list.item(i).text())
-
             self.thread = Worker(files, selected_filters, scale_val, speed_val, overlay_file, out_dir, overlay_pos)
             self.thread.progress.connect(self.on_prog)
             self.thread.finished.connect(self.on_done)
