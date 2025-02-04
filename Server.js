@@ -1,13 +1,11 @@
 const express = require('express');
-const { exec } = require('child_process');
+const { spawn } = require('child_process');
 const path = require('path');
-const fs = require('fs');
+const fs = require('fs').promises;
 const morgan = require('morgan');
 const { body, validationResult } = require('express-validator');
 const winston = require('winston');
 const dotenv = require('dotenv');
-const util = require('util');
-
 dotenv.config();
 
 const app = express();
@@ -36,28 +34,38 @@ const validateVideoProcessingRequest = [
     body('overlayPosition').optional().isString(),
 ];
 
-const execAsync = util.promisify(exec);
-
 const processVideo = async (inputPath, outputPath, filters, scale, speed, overlay, overlayPosition) => {
     const pythonScriptPath = path.join(__dirname, 'video_processor.py');
-    const args = [
-        inputPath,
-        outputPath,
-        JSON.stringify(filters),
-        scale,
-        speed,
-        overlay || '',
-        overlayPosition || ''
-    ];
-
-    const command = `python ${pythonScriptPath} ${args.map(arg => `"${arg}"`).join(' ')}`;
-    const { stdout, stderr } = await execAsync(command);
-
-    if (stderr) {
-        throw new Error(stderr);
+    const stats = await fs.stat(inputPath);
+    if (!stats.isFile()) {
+        throw new Error('Input path must point to a valid file.');
     }
 
-    return stdout;
+    return new Promise((resolve, reject) => {
+        const args = [
+            inputPath,
+            outputPath,
+            JSON.stringify(filters),
+            String(scale),
+            String(speed),
+            overlay || '',
+            overlayPosition || ''
+        ];
+
+        const pythonProcess = spawn('python', [pythonScriptPath, ...args]);
+
+        let stdout = '';
+        let stderr = '';
+
+        pythonProcess.stdout.on('data', data => stdout += data.toString());
+        pythonProcess.stderr.on('data', data => stderr += data.toString());
+        pythonProcess.on('close', (code) => {
+            if (code !== 0) {
+                return reject(new Error(`Python script failed with exit code ${code}: ${stderr}`));
+            }
+            resolve(stdout);
+        });
+    });
 };
 
 app.post('/process-video', validateVideoProcessingRequest, async (req, res) => {
@@ -69,16 +77,24 @@ app.post('/process-video', validateVideoProcessingRequest, async (req, res) => {
 
         const { inputPath, outputPath, filters, scale, speed, overlay, overlayPosition } = req.body;
 
-        if (!fs.existsSync(inputPath)) {
-            return res.status(400).json({ error: 'Input file does not exist' });
+        logger.info(`Starting video processing for input: ${inputPath}`);
+
+        if (!(await fs.stat(inputPath)).isFile()) {
+            return res.status(400).json({ error: 'Input file does not exist or is not accessible.' });
         }
 
         const output = await processVideo(inputPath, outputPath, filters, scale, speed, overlay, overlayPosition);
-        logger.info(`Output: ${output}`);
-        res.json({ message: 'Video processed successfully', outputPath });
+
+        logger.info(`Video processing completed successfully. Output: ${output}`);
+
+        return res.json({
+            message: 'Video processed successfully',
+            outputPath,
+            details: output
+        });
     } catch (error) {
-        logger.error(`Error: ${error.message}`);
-        res.status(500).json({ error: 'Video processing failed', details: error.message });
+        logger.error(`Error during video processing: ${error.message}`);
+        return res.status(500).json({ error: 'Video processing failed', details: error.message });
     }
 });
 
