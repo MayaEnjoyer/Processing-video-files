@@ -84,7 +84,6 @@ OVERLAY_POSITIONS = {
     "Bottom-Right": ("main_w-overlay_w", "main_h-overlay_h")
 }
 
-
 def is_video_file(path):
     if not os.path.isfile(path):
         return False
@@ -104,7 +103,6 @@ def find_videos_in_folder(folder):
             if is_video_file(fp):
                 found.append(fp)
     return found
-
 
 def pick_random_filter():
     possible = [k for k in FILTERS.keys() if k not in ("Random filter", "No filter")]
@@ -506,7 +504,7 @@ def main():
     w.show()
     sys.exit(app.exec_())
 
-
-
 if __name__ == '__main__':
     main()
+
+    
