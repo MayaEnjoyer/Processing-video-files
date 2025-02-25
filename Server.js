@@ -99,7 +99,6 @@ app.post('/process-video', validateVideoProcessingRequest, async (req, res) => {
 });
 
 
-
 app.use((err, req, res, next) => {
     logger.error(err.stack);
     res.status(500).json({ error: 'Something went wrong on the server' });
